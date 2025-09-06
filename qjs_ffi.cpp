@@ -83,7 +83,7 @@ static JSValue js_ffi_symbol(JSContext* ctx, JSValueConst this_val, int argc, JS
   }
   void* handle = (void*)(uintptr_t)handle_val;
   void* symbol = dlsym(handle, name);
-  JS_FreeCString(ctx, name);
+    JS_FreeCString(ctx, name);
   if (!symbol) return JS_ThrowTypeError(ctx, "Failed to find symbol: %s", dlerror());
   return JS_NewInt64(ctx, (int64_t)(uintptr_t)symbol);
 }
@@ -323,11 +323,163 @@ static JSValue js_ffi_close(JSContext* ctx, JSValueConst this_val, int argc, JSV
   return JS_UNDEFINED;
 }
 
+// JS: FFI.malloc(size)
+static JSValue js_ffi_malloc(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv)
+{
+  uint32_t size;
+  if (JS_ToUint32(ctx, &size, argv[0])) return JS_EXCEPTION;
+
+  void* ptr = malloc(size);
+  if (!ptr) {
+    return JS_ThrowOutOfMemory(ctx);
+  }
+
+  // 初始化为0
+  memset(ptr, 0, size);
+
+  return JS_NewInt64(ctx, (int64_t)(uintptr_t)ptr);
+}
+
+// JS: FFI.free(ptr)
+static JSValue js_ffi_free(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv)
+{
+  int64_t ptr_val;
+  if (JS_ToInt64(ctx, &ptr_val, argv[0])) return JS_EXCEPTION;
+
+  void* ptr = (void*)(uintptr_t)ptr_val;
+  if (ptr) {
+    free(ptr);
+  }
+
+  return JS_UNDEFINED;
+}
+
+// JS: FFI.writeArray(ptr, array, type, count)
+static JSValue js_ffi_writeArray(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv)
+{
+  if (argc < 4) return JS_ThrowTypeError(ctx, "writeArray requires 4 arguments");
+
+  int64_t ptr_val;
+  if (JS_ToInt64(ctx, &ptr_val, argv[0])) return JS_EXCEPTION;
+  void* ptr = (void*)(uintptr_t)ptr_val;
+  if (!ptr) return JS_ThrowTypeError(ctx, "Invalid pointer");
+
+  if (!JS_IsArray(ctx, argv[1])) return JS_ThrowTypeError(ctx, "Second argument must be an array");
+
+  const char* type_str = JS_ToCString(ctx, argv[2]);
+  if (!type_str) return JS_EXCEPTION;
+
+  uint32_t count;
+  if (JS_ToUint32(ctx, &count, argv[3])) {
+    JS_FreeCString(ctx, type_str);
+    return JS_EXCEPTION;
+  }
+
+  // 根据类型写入数组
+  for (uint32_t i = 0; i < count; i++) {
+    JSValue elem = JS_GetPropertyUint32(ctx, argv[1], i);
+
+    if (strcmp(type_str, "int") == 0 || strcmp(type_str, "int32") == 0) {
+      int32_t val;
+      JS_ToInt32(ctx, &val, elem);
+      ((int32_t*)ptr)[i] = val;
+    }
+    else if (strcmp(type_str, "uint32") == 0) {
+      uint32_t val;
+      JS_ToUint32(ctx, &val, elem);
+      ((uint32_t*)ptr)[i] = val;
+    }
+    else if (strcmp(type_str, "float") == 0) {
+      double val;
+      JS_ToFloat64(ctx, &val, elem);
+      ((float*)ptr)[i] = (float)val;
+    }
+    else if (strcmp(type_str, "double") == 0) {
+      double val;
+      JS_ToFloat64(ctx, &val, elem);
+      ((double*)ptr)[i] = val;
+    }
+    else if (strcmp(type_str, "int8") == 0) {
+      int32_t val;
+      JS_ToInt32(ctx, &val, elem);
+      ((int8_t*)ptr)[i] = (int8_t)val;
+    }
+    else if (strcmp(type_str, "uint8") == 0) {
+      uint32_t val;
+      JS_ToUint32(ctx, &val, elem);
+      ((uint8_t*)ptr)[i] = (uint8_t)val;
+    }
+
+    JS_FreeValue(ctx, elem);
+  }
+
+  JS_FreeCString(ctx, type_str);
+  return JS_UNDEFINED;
+}
+
+// JS: FFI.readArray(ptr, type, count)
+static JSValue js_ffi_readArray(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv)
+{
+  if (argc < 3) return JS_ThrowTypeError(ctx, "readArray requires 3 arguments");
+
+  int64_t ptr_val;
+  if (JS_ToInt64(ctx, &ptr_val, argv[0])) return JS_EXCEPTION;
+  void* ptr = (void*)(uintptr_t)ptr_val;
+  if (!ptr) return JS_ThrowTypeError(ctx, "Invalid pointer");
+
+  const char* type_str = JS_ToCString(ctx, argv[1]);
+  if (!type_str) return JS_EXCEPTION;
+
+  uint32_t count;
+  if (JS_ToUint32(ctx, &count, argv[2])) {
+    JS_FreeCString(ctx, type_str);
+    return JS_EXCEPTION;
+  }
+
+  JSValue array = JS_NewArray(ctx);
+
+  // 根据类型读取数组
+  for (uint32_t i = 0; i < count; i++) {
+    JSValue elem;
+
+    if (strcmp(type_str, "int") == 0 || strcmp(type_str, "int32") == 0) {
+      elem = JS_NewInt32(ctx, ((int32_t*)ptr)[i]);
+    }
+    else if (strcmp(type_str, "uint32") == 0) {
+      elem = JS_NewUint32(ctx, ((uint32_t*)ptr)[i]);
+    }
+    else if (strcmp(type_str, "float") == 0) {
+      elem = JS_NewFloat64(ctx, ((float*)ptr)[i]);
+    }
+    else if (strcmp(type_str, "double") == 0) {
+      elem = JS_NewFloat64(ctx, ((double*)ptr)[i]);
+    }
+    else if (strcmp(type_str, "int8") == 0) {
+      elem = JS_NewInt32(ctx, ((int8_t*)ptr)[i]);
+    }
+    else if (strcmp(type_str, "uint8") == 0) {
+      elem = JS_NewUint32(ctx, ((uint8_t*)ptr)[i]);
+    }
+    else {
+      elem = JS_UNDEFINED;
+    }
+
+    JS_SetPropertyUint32(ctx, array, i, elem);
+  }
+
+  JS_FreeCString(ctx, type_str);
+  return array;
+}
+
 static const JSCFunctionListEntry js_ffi_funcs[] = {
   JS_CFUNC_DEF("open", 1, js_ffi_open),
   JS_CFUNC_DEF("symbol", 2, js_ffi_symbol),
   JS_CFUNC_DEF("call", 3, js_ffi_call),
   JS_CFUNC_DEF("close", 1, js_ffi_close),
+  JS_CFUNC_DEF("malloc", 1, js_ffi_malloc),
+  JS_CFUNC_DEF("free", 1, js_ffi_free),
+  JS_CFUNC_DEF("writeArray", 4, js_ffi_writeArray),
+  JS_CFUNC_DEF("readArray", 3, js_ffi_readArray),
 };
 
 static int js_ffi_init(JSContext* ctx, JSModuleDef* m)

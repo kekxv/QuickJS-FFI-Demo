@@ -151,4 +151,78 @@ int test_large_numbers(int64_t big_num, uint64_t huge_num) {
     return (big_num > 0 && huge_num > 0) ? 1 : 0;
 }
 
+// 数组操作测试
+__attribute__((visibility("default")))
+void array_copy(const int* src, int* dest, int size) {
+    printf("C [array_copy]: copying %d integers\n", size);
+    for (int i = 0; i < size; i++) {
+        dest[i] = src[i];
+        printf("  dest[%d] = %d\n", i, dest[i]);
+    }
+}
+
+__attribute__((visibility("default")))
+void array_multiply(int* arr, int size, int multiplier) {
+    printf("C [array_multiply]: multiplying %d integers by %d\n", size, multiplier);
+    for (int i = 0; i < size; i++) {
+        arr[i] *= multiplier;
+        printf("  arr[%d] = %d\n", i, arr[i]);
+    }
+}
+
+__attribute__((visibility("default")))
+int array_sum(const int* arr, int size) {
+    printf("C [array_sum]: summing %d integers\n", size);
+    int sum = 0;
+    for (int i = 0; i < size; i++) {
+        sum += arr[i];
+        printf("  adding arr[%d] = %d, sum = %d\n", i, arr[i], sum);
+    }
+    return sum;
+}
+
+__attribute__((visibility("default")))
+void float_array_process(const float* input, float* output, int size) {
+    printf("C [float_array_process]: processing %d floats\n", size);
+    for (int i = 0; i < size; i++) {
+        output[i] = input[i] * 2.0f + 1.0f;
+        printf("  output[%d] = %.2f (from %.2f)\n", i, output[i], input[i]);
+    }
+}
+
+__attribute__((visibility("default")))
+void byte_array_reverse(uint8_t* arr, int size) {
+    printf("C [byte_array_reverse]: reversing %d bytes\n", size);
+    for (int i = 0; i < size / 2; i++) {
+        uint8_t temp = arr[i];
+        arr[i] = arr[size - 1 - i];
+        arr[size - 1 - i] = temp;
+    }
+
+    printf("  result: ");
+    for (int i = 0; i < size; i++) {
+        printf("%d ", arr[i]);
+    }
+    printf("\n");
+}
+
+__attribute__((visibility("default")))
+int find_max_in_array(const int* arr, int size, int* max_index) {
+    if (size <= 0) return -1;
+
+    int max_val = arr[0];
+    *max_index = 0;
+
+    printf("C [find_max_in_array]: finding max in %d integers\n", size);
+    for (int i = 1; i < size; i++) {
+        if (arr[i] > max_val) {
+            max_val = arr[i];
+            *max_index = i;
+        }
+    }
+
+    printf("  max value: %d at index %d\n", max_val, *max_index);
+    return max_val;
+}
+
 
