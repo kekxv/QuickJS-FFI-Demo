@@ -127,6 +127,9 @@ int main(int argc, char** argv)
 
     js_std_init_handlers(rt.get());
 
+    // Set up module loader for ES6 import/export support
+    JS_SetModuleLoaderFunc2(rt.get(), NULL, js_module_loader, js_module_check_attributes, NULL);
+
     // Load the standard, os and ffi modules
     js_init_module_std(ctx.get(), "std");
     js_init_module_os(ctx.get(), "os");
