@@ -1,6 +1,9 @@
 // libadd.c
 // 一个简单的动态库，用于被 JS 调用。
 #include <stdio.h>
+#include <string.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 // __attribute__((visibility("default"))) 确保函数被导出
 __attribute__((visibility("default")))
@@ -11,8 +14,141 @@ int add(int a, int b) {
 
 __attribute__((visibility("default")))
 double add_double(double a, double b) {
-    printf("C [add_double]: called with %f and %f\n", a, b);
+    printf("C [add_double]: called with %.2f and %.2f\n", a, b);
     return a + b;
+}
+
+// 整数类型测试
+__attribute__((visibility("default")))
+int8_t test_int8(int8_t a, int8_t b) {
+    printf("C [test_int8]: called with %d and %d\n", a, b);
+    return a * b;
+}
+
+__attribute__((visibility("default")))
+uint8_t test_uint8(uint8_t a, uint8_t b) {
+    printf("C [test_uint8]: called with %u and %u\n", a, b);
+    return a + b;
+}
+
+__attribute__((visibility("default")))
+int16_t test_int16(int16_t a, int16_t b) {
+    printf("C [test_int16]: called with %d and %d\n", a, b);
+    return a - b;
+}
+
+__attribute__((visibility("default")))
+uint16_t test_uint16(uint16_t a, uint16_t b) {
+    printf("C [test_uint16]: called with %u and %u\n", a, b);
+    return a + b;
+}
+
+__attribute__((visibility("default")))
+int32_t test_int32(int32_t a, int32_t b) {
+    printf("C [test_int32]: called with %d and %d\n", a, b);
+    return a + b;
+}
+
+__attribute__((visibility("default")))
+uint32_t test_uint32(uint32_t a, uint32_t b) {
+    printf("C [test_uint32]: called with %u and %u\n", a, b);
+    return a + b;
+}
+
+__attribute__((visibility("default")))
+int64_t test_int64(int64_t a, int64_t b) {
+    printf("C [test_int64]: called with %lld and %lld\n", a, b);
+    return a + b;
+}
+
+__attribute__((visibility("default")))
+uint64_t test_uint64(uint64_t a, uint64_t b) {
+    printf("C [test_uint64]: called with %llu and %llu\n", a, b);
+    return a + b;
+}
+
+// 浮点数类型测试
+__attribute__((visibility("default")))
+float test_float(float a, float b) {
+    printf("C [test_float]: called with %.2f and %.2f\n", a, b);
+    return a * b;
+}
+
+__attribute__((visibility("default")))
+long double test_longdouble(long double a, long double b) {
+    printf("C [test_longdouble]: called with %.2Lf and %.2Lf\n", a, b);
+    return a + b;
+}
+
+// 字符类型测试
+__attribute__((visibility("default")))
+char test_char(char a, char b) {
+    printf("C [test_char]: called with '%c' and '%c'\n", a, b);
+    return a > b ? a : b; // 返回较大的字符
+}
+
+__attribute__((visibility("default")))
+unsigned char test_uchar(unsigned char a, unsigned char b) {
+    printf("C [test_uchar]: called with %u and %u\n", a, b);
+    return a + b;
+}
+
+// 字符串类型测试
+__attribute__((visibility("default")))
+int test_string_length(const char* str) {
+    printf("C [test_string_length]: called with '%s'\n", str ? str : "(null)");
+    return str ? strlen(str) : -1;
+}
+
+__attribute__((visibility("default")))
+const char* test_string_concat(const char* a, const char* b) {
+    static char buffer[256];
+    printf("C [test_string_concat]: called with '%s' and '%s'\n", 
+           a ? a : "(null)", b ? b : "(null)");
+
+    if (a && b) {
+        snprintf(buffer, sizeof(buffer), "%s%s", a, b);
+        return buffer;
+    }
+    return "error";
+}
+
+// 指针类型测试
+__attribute__((visibility("default")))
+void* test_pointer_identity(void* ptr) {
+    printf("C [test_pointer_identity]: called with pointer %p\n", ptr);
+    return ptr; // 返回相同的指针
+}
+
+__attribute__((visibility("default")))
+int* test_int_pointer(int* ptr, int offset) {
+    printf("C [test_int_pointer]: called with pointer %p, offset %d\n", ptr, offset);
+    if (ptr) {
+        printf("C [test_int_pointer]: value at pointer: %d\n", *ptr);
+        *ptr += offset; // 修改指针指向的值
+    }
+    return ptr;
+}
+
+// 混合类型测试
+__attribute__((visibility("default")))
+double test_mixed_types(int a, float b, double c, uint32_t d) {
+    printf("C [test_mixed_types]: called with int=%d, float=%.2f, double=%.2f, uint32=%u\n", 
+           a, b, c, d);
+    return a + b + c + d;
+}
+
+// void 类型测试
+__attribute__((visibility("default")))
+void test_void_function(int value) {
+    printf("C [test_void_function]: called with %d, no return value\n", value);
+}
+
+// 边界值测试
+__attribute__((visibility("default")))
+int test_large_numbers(int64_t big_num, uint64_t huge_num) {
+    printf("C [test_large_numbers]: called with %lld and %llu\n", big_num, huge_num);
+    return (big_num > 0 && huge_num > 0) ? 1 : 0;
 }
 
 

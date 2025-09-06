@@ -2,7 +2,7 @@
 
 # 1. 设置项目和 CMake 最低版本
 cmake_minimum_required(VERSION 3.10)
-project(QuickJS_FFI_Demo C)
+project(QuickJS_FFI_Demo)
 
 # 2. 查找所需的库
 # 查找 libffi
@@ -40,8 +40,11 @@ set_target_properties(add PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # 5. 编译主程序 qjs_ffi
 add_executable(qjs_ffi
         qjs_ffi.h
-        qjs_ffi.c
-        main.c)
+        qjs_ffi.cpp
+        main.cpp)
+
+# 设置 C++ 标准
+set_target_properties(qjs_ffi PROPERTIES CXX_STANDARD 14)
 
 # 链接所有需要的库
 target_link_libraries(qjs_ffi PRIVATE
@@ -76,12 +79,3 @@ add_custom_target(run_demo
     # USES_TERMINAL 确保我们可以看到程序的实时输出
     USES_TERMINAL
 )
-
-# 打印构建和运行说明
-message(STATUS "CMake configuration complete.")
-message(STATUS "To build the project, run:")
-message(STATUS "  mkdir build && cd build")
-message(STATUS "  cmake ..")
-message(STATUS "  make")
-message(STATUS "To run the demo, after building, run:")
-message(STATUS "  make run_demo")
