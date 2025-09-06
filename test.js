@@ -1,6 +1,6 @@
 // test.js
 // The JavaScript code that uses the FFI module.
-import {open, symbol, call, close, malloc, free, writeArray, readArray} from 'ffi';
+import {open, symbol, call, close, malloc, free, writeArray, readArray, createCallback} from 'ffi';
 import * as std from 'std';
 import * as os from 'os';
 
@@ -472,6 +472,211 @@ try {
 
     console.log("\n  All array tests passed!");
   } // 结束 allFunctionsAvailable 的 if 块
+
+  // --- 测试回调函数 ---
+  logTest("Test 10: Callback Functions", 'RUNNING');
+
+  try {
+    console.log("\n  Testing callback functions:");
+
+    // 检查回调函数是否可用
+    const callbackFunctions = ['test_simple_callback', 'test_log_callback', 'test_math_callback', 
+                              'test_array_foreach', 'test_array_filter'];
+
+    const availableCallbacks = {};
+    let allCallbacksAvailable = true;
+
+    for (const funcName of callbackFunctions) {
+      try {
+        const funcPtr = symbol(libHandle, funcName);
+        availableCallbacks[funcName] = funcPtr;
+        logSuccess(`${Colors.GREEN}✓${Colors.RESET} ${funcName} found`);
+      } catch (e) {
+        logError(`${Colors.RED}✗${Colors.RESET} ${funcName} not found`);
+        allCallbacksAvailable = false;
+      }
+    }
+
+    if (allCallbacksAvailable) {
+      // 测试1: 简单的回调函数 (int, int) -> int
+      console.log("\n    Testing simple callback (int, int) -> int:");
+
+      // 定义一个简单的JS回调函数
+      function addCallback(a, b) {
+        console.log(`    JS Callback: addCallback(${a}, ${b}) = ${a + b}`);
+        return a + b;
+      }
+
+      function multiplyCallback(a, b) {
+        console.log(`    JS Callback: multiplyCallback(${a}, ${b}) = ${a * b}`);
+        return a * b;
+      }
+
+      // 创建回调函数指针
+      const addCallbackPtr = createCallback(addCallback, 'int', ['int', 'int']);
+      const multiplyCallbackPtr = createCallback(multiplyCallback, 'int', ['int', 'int']);
+
+      // 测试加法回调
+      const testSimpleCallback = availableCallbacks['test_simple_callback'];
+      const result1 = call(testSimpleCallback, 'int', ['int', 'int', 'pointer'], 15, 25, addCallbackPtr);
+      console.log(`    C function returned: ${result1} (expected: 40)`);
+      if (result1 !== 40) {
+        throw new Error("Simple add callback test failed!");
+      }
+
+      // 测试乘法回调
+      const result2 = call(testSimpleCallback, 'int', ['int', 'int', 'pointer'], 6, 7, multiplyCallbackPtr);
+      console.log(`    C function returned: ${result2} (expected: 42)`);
+      if (result2 !== 42) {
+        throw new Error("Simple multiply callback test failed!");
+      }
+
+      // 测试2: 日志回调函数 (string) -> void
+      console.log("\n    Testing log callback (string) -> void:");
+
+      function logCallback(message) {
+        console.log(`    ${Colors.CYAN}JS Log Callback:${Colors.RESET} ${message}`);
+      }
+
+      const logCallbackPtr = createCallback(logCallback, 'void', ['string']);
+      const testLogCallback = availableCallbacks['test_log_callback'];
+
+      call(testLogCallback, 'void', ['string', 'pointer'], "Hello from C!", logCallbackPtr);
+      console.log("    Log callback test completed");
+
+      // 测试3: 数学回调函数 (double) -> double
+      console.log("\n    Testing math callback (double) -> double:");
+
+      function squareCallback(x) {
+        const result = x * x;
+        console.log(`    JS Math Callback: square(${x}) = ${result}`);
+        return result;
+      }
+
+      function sqrtCallback(x) {
+        const result = Math.sqrt(x);
+        console.log(`    JS Math Callback: sqrt(${x}) = ${result.toFixed(2)}`);
+        return result;
+      }
+
+      const squareCallbackPtr = createCallback(squareCallback, 'double', ['double']);
+      const sqrtCallbackPtr = createCallback(sqrtCallback, 'double', ['double']);
+      const testMathCallback = availableCallbacks['test_math_callback'];
+
+      // 测试平方回调
+      const mathResult1 = call(testMathCallback, 'double', ['double', 'pointer'], 5.0, squareCallbackPtr);
+      console.log(`    Square callback result: ${mathResult1} (expected: 25)`);
+      if (Math.abs(mathResult1 - 25.0) > 1e-6) {
+        throw new Error("Math square callback test failed!");
+      }
+
+      // 测试平方根回调
+      const mathResult2 = call(testMathCallback, 'double', ['double', 'pointer'], 16.0, sqrtCallbackPtr);
+      console.log(`    Sqrt callback result: ${mathResult2} (expected: 4)`);
+      if (Math.abs(mathResult2 - 4.0) > 1e-6) {
+        throw new Error("Math sqrt callback test failed!");
+      }
+
+      // 测试4: 数组遍历回调 (int, int) -> void
+      console.log("\n    Testing array foreach callback (int, int) -> void:");
+
+      const foreachResults = [];
+      function foreachCallback(value, index) {
+        console.log(`    JS Foreach: arr[${index}] = ${value}`);
+        foreachResults.push({index, value});
+      }
+
+      const foreachCallbackPtr = createCallback(foreachCallback, 'void', ['int', 'int']);
+      const testArrayForeach = availableCallbacks['test_array_foreach'];
+
+      const foreachArray = [100, 200, 300, 400];
+      const foreachArrayPtr = malloc(foreachArray.length * 4);
+      writeArray(foreachArrayPtr, foreachArray, 'int', foreachArray.length);
+
+      call(testArrayForeach, 'void', ['pointer', 'int', 'pointer'], 
+           foreachArrayPtr, foreachArray.length, foreachCallbackPtr);
+
+      // 验证foreach结果
+      if (foreachResults.length !== foreachArray.length) {
+        throw new Error("Foreach callback didn't visit all elements!");
+      }
+      for (let i = 0; i < foreachArray.length; i++) {
+        if (foreachResults[i].index !== i || foreachResults[i].value !== foreachArray[i]) {
+          throw new Error(`Foreach callback mismatch at index ${i}`);
+        }
+      }
+
+      // 测试5: 数组过滤回调 (int) -> int
+      console.log("\n    Testing array filter callback (int) -> int:");
+
+      function evenFilterCallback(value) {
+        const isEven = value % 2 === 0;
+        console.log(`    JS Filter: ${value} is ${isEven ? 'even (keep)' : 'odd (filter out)'}`);
+        return isEven ? 1 : 0;
+      }
+
+      function greaterThan50FilterCallback(value) {
+        const keep = value > 50;
+        console.log(`    JS Filter: ${value} ${keep ? '> 50 (keep)' : '<= 50 (filter out)'}`);
+        return keep ? 1 : 0;
+      }
+
+      const evenFilterPtr = createCallback(evenFilterCallback, 'int', ['int']);
+      const gt50FilterPtr = createCallback(greaterThan50FilterCallback, 'int', ['int']);
+      const testArrayFilter = availableCallbacks['test_array_filter'];
+
+      // 测试偶数过滤
+      const filterInput = [10, 15, 20, 25, 30, 35, 40];
+      const filterInputPtr = malloc(filterInput.length * 4);
+      const filterOutputPtr = malloc(filterInput.length * 4);
+
+      writeArray(filterInputPtr, filterInput, 'int', filterInput.length);
+
+      const evenFilterCount = call(testArrayFilter, 'int', 
+        ['pointer', 'int', 'pointer', 'pointer'],
+        filterInputPtr, filterInput.length, filterOutputPtr, evenFilterPtr);
+
+      const evenFilteredArray = readArray(filterOutputPtr, 'int', evenFilterCount);
+      console.log(`    Even filter result: [${evenFilteredArray.join(', ')}] (count: ${evenFilterCount})`);
+
+      // 验证偶数过滤结果
+      const expectedEvenFiltered = filterInput.filter(x => x % 2 === 0);
+      if (evenFilterCount !== expectedEvenFiltered.length) {
+        throw new Error(`Even filter count mismatch: expected ${expectedEvenFiltered.length}, got ${evenFilterCount}`);
+      }
+
+      // 测试大于50过滤
+      const gt50FilterCount = call(testArrayFilter, 'int',
+        ['pointer', 'int', 'pointer', 'pointer'],
+        filterInputPtr, filterInput.length, filterOutputPtr, gt50FilterPtr);
+
+      const gt50FilteredArray = readArray(filterOutputPtr, 'int', gt50FilterCount);
+      console.log(`    >50 filter result: [${gt50FilteredArray.join(', ')}] (count: ${gt50FilterCount})`);
+
+      // 验证大于50过滤结果 (这个例子中没有大于50的数)
+      if (gt50FilterCount !== 0) {
+        console.log(`    Note: Expected 0 elements > 50, got ${gt50FilterCount}`);
+      }
+
+      // 清理内存
+      free(foreachArrayPtr);
+      free(filterInputPtr);
+      free(filterOutputPtr);
+
+      console.log("\n  All callback tests passed!");
+      logTest("Callback Functions", 'PASS');
+
+    } else {
+      logWarning("Some callback functions are missing from the library");
+      logInfo("Please ensure libadd.c contains the callback test functions");
+      logTest("Callback Functions", 'SKIP');
+    }
+
+  } catch (e) {
+    logError(`Callback test failed: ${e.message}`);
+    logTest("Callback Functions", 'FAIL');
+    // 不抛出异常，让其他测试继续
+  }
 
   close(libHandle);
   logSuccess("Library closed successfully");

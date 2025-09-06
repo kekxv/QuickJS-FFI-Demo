@@ -12,6 +12,103 @@
 
 #define countof(x) (sizeof(x) / sizeof((x)[0]))
 
+// 回调函数信息结构体
+struct CallbackInfo {
+  JSContext* ctx;
+  JSValue js_callback;
+  ffi_cif* cif;
+  ffi_type* rtype;
+  ffi_type** atypes;
+  int argc;
+  void* closure_ptr;  // 添加闭包指针以便清理
+  void* func_ptr;     // 添加函数指针
+
+  ~CallbackInfo() {
+    if (ctx && !JS_IsUndefined(js_callback)) {
+      JS_FreeValue(ctx, js_callback);
+    }
+    if (atypes) {
+      delete[] atypes;
+    }
+    if (cif) {
+      delete cif;
+    }
+    if (closure_ptr) {
+      ffi_closure_free(closure_ptr);
+    }
+  }
+};
+
+// 全局回调信息存储（简单实现，实际应用中需要更好的管理）
+static std::vector<std::unique_ptr<CallbackInfo>> callback_infos;
+
+// 清理所有回调函数
+static void cleanup_callbacks() {
+  callback_infos.clear();
+}
+
+// 回调函数包装器 - 将被C函数调用，然后调用JS函数
+static void callback_wrapper(ffi_cif* cif, void* ret, void** args, void* user_data) {
+  CallbackInfo* info = static_cast<CallbackInfo*>(user_data);
+
+  // 准备参数数组给JS函数调用
+  std::vector<JSValue> js_args;
+  js_args.reserve(info->argc);
+
+  for (int i = 0; i < info->argc; i++) {
+    JSValue js_arg;
+
+    // 根据参数类型转换C参数到JS值
+    if (info->atypes[i] == &ffi_type_sint) {
+      js_arg = JS_NewInt32(info->ctx, *(int32_t*)args[i]);
+    }
+    else if (info->atypes[i] == &ffi_type_uint) {
+      js_arg = JS_NewUint32(info->ctx, *(uint32_t*)args[i]);
+    }
+    else if (info->atypes[i] == &ffi_type_double) {
+      js_arg = JS_NewFloat64(info->ctx, *(double*)args[i]);
+    }
+    else if (info->atypes[i] == &ffi_type_pointer) {
+      void* ptr = *(void**)args[i];
+      if (ptr) {
+        // 假设是字符串指针
+        js_arg = JS_NewString(info->ctx, (const char*)ptr);
+      } else {
+        js_arg = JS_NULL;
+      }
+    }
+    else {
+      js_arg = JS_UNDEFINED;
+    }
+
+    js_args.push_back(js_arg);
+  }
+
+  // 调用JS回调函数
+  JSValue result = JS_Call(info->ctx, info->js_callback, JS_UNDEFINED, info->argc, js_args.data());
+
+  // 转换返回值
+  if (info->rtype == &ffi_type_sint) {
+    int32_t int_result = 0;
+    JS_ToInt32(info->ctx, &int_result, result);
+    *(int32_t*)ret = int_result;
+  }
+  else if (info->rtype == &ffi_type_double) {
+    double double_result = 0.0;
+    JS_ToFloat64(info->ctx, &double_result, result);
+    *(double*)ret = double_result;
+  }
+  else if (info->rtype == &ffi_type_void) {
+    // void返回类型，不需要设置返回值
+  }
+
+  // 清理JS参数
+  for (auto& js_arg : js_args) {
+    JS_FreeValue(info->ctx, js_arg);
+  }
+  JS_FreeValue(info->ctx, result);
+}
+
 // 将 JS 传入的类型字符串转换为 ffi_type
 static ffi_type* string_to_ffi_type(const char* type_str)
 {
@@ -39,6 +136,7 @@ static ffi_type* string_to_ffi_type(const char* type_str)
   // 指针和字符串类型
   if (strcmp(type_str, "pointer") == 0) return &ffi_type_pointer;
   if (strcmp(type_str, "string") == 0) return &ffi_type_pointer;  // 字符串作为 char* 处理
+  if (strcmp(type_str, "callback") == 0) return &ffi_type_pointer; // 回调函数作为指针处理
 
   // 特殊类型
   if (strcmp(type_str, "void") == 0) return &ffi_type_void;
@@ -222,6 +320,13 @@ static JSValue js_ffi_call(JSContext* ctx, JSValueConst this_val, int argc, JSVa
         const char* str = JS_ToCString(ctx, argv[3 + i]);
         *(const char**)current_arg_ptr = str;
       }
+      else if (strcmp(type_str, "callback") == 0)
+      {
+        // 回调函数参数直接作为指针处理，需要预先通过createCallback创建
+        int64_t callback_ptr_val;
+        JS_ToInt64(ctx, &callback_ptr_val, argv[3 + i]);
+        *(void**)current_arg_ptr = (void*)(uintptr_t)callback_ptr_val;
+      }
 
       avalues[i] = current_arg_ptr;
 
@@ -319,6 +424,10 @@ static JSValue js_ffi_close(JSContext* ctx, JSValueConst this_val, int argc, JSV
 {
   int64_t handle_val;
   if (JS_ToInt64(ctx, &handle_val, argv[0])) return JS_EXCEPTION;
+
+  // 清理所有回调函数
+  cleanup_callbacks();
+
   dlclose((void*)(uintptr_t)handle_val);
   return JS_UNDEFINED;
 }
@@ -471,6 +580,99 @@ static JSValue js_ffi_readArray(JSContext* ctx, JSValueConst this_val, int argc,
   return array;
 }
 
+// JS: FFI.createCallback(js_function, return_type, [param_types])
+static JSValue js_ffi_createCallback(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv)
+{
+  if (argc < 3) return JS_ThrowTypeError(ctx, "createCallback requires 3 arguments");
+
+  if (!JS_IsFunction(ctx, argv[0])) {
+    return JS_ThrowTypeError(ctx, "First argument must be a function");
+  }
+
+  const char* ret_type_str = JS_ToCString(ctx, argv[1]);
+  ffi_type* rtype = string_to_ffi_type(ret_type_str);
+  JS_FreeCString(ctx, ret_type_str);
+  if (!rtype) return JS_ThrowTypeError(ctx, "Invalid return type");
+
+  JSValueConst param_types_js = argv[2];
+  if (!JS_IsArray(ctx, param_types_js)) {
+    return JS_ThrowTypeError(ctx, "Parameter types must be an array");
+  }
+
+  JSValue len_val = JS_GetPropertyStr(ctx, param_types_js, "length");
+  uint32_t num_params;
+  JS_ToUint32(ctx, &num_params, len_val);
+  JS_FreeValue(ctx, len_val);
+
+  // 创建回调信息
+  auto callback_info = std::make_unique<CallbackInfo>();
+  callback_info->ctx = ctx;
+  callback_info->js_callback = JS_DupValue(ctx, argv[0]);
+  callback_info->argc = num_params;
+  callback_info->rtype = rtype;
+
+  if (num_params > 0) {
+    callback_info->atypes = new ffi_type*[num_params];
+
+    for (uint32_t i = 0; i < num_params; i++) {
+      JSValue type_val = JS_GetPropertyUint32(ctx, param_types_js, i);
+      const char* type_str = JS_ToCString(ctx, type_val);
+      callback_info->atypes[i] = string_to_ffi_type(type_str);
+
+      if (!callback_info->atypes[i]) {
+        JS_FreeCString(ctx, type_str);
+        JS_FreeValue(ctx, type_val);
+        delete[] callback_info->atypes;
+        JS_FreeValue(ctx, callback_info->js_callback);
+        return JS_ThrowTypeError(ctx, "Invalid parameter type");
+      }
+
+      JS_FreeCString(ctx, type_str);
+      JS_FreeValue(ctx, type_val);
+    }
+  } else {
+    callback_info->atypes = nullptr;
+  }
+
+  callback_info->cif = new ffi_cif;
+  if (ffi_prep_cif(callback_info->cif, FFI_DEFAULT_ABI, 
+                  callback_info->argc, callback_info->rtype, 
+                  callback_info->atypes) != FFI_OK) {
+    delete[] callback_info->atypes;
+    delete callback_info->cif;
+    JS_FreeValue(ctx, callback_info->js_callback);
+    return JS_ThrowInternalError(ctx, "ffi_prep_cif failed for callback");
+  }
+
+  // 创建闭包
+  void* func_ptr;
+  void* closure_ptr = ffi_closure_alloc(sizeof(ffi_closure), &func_ptr);
+  if (!closure_ptr) {
+    delete[] callback_info->atypes;
+    delete callback_info->cif;
+    JS_FreeValue(ctx, callback_info->js_callback);
+    return JS_ThrowOutOfMemory(ctx);
+  }
+
+  if (ffi_prep_closure_loc((ffi_closure*)closure_ptr, callback_info->cif,
+                          callback_wrapper, callback_info.get(), func_ptr) != FFI_OK) {
+    ffi_closure_free(closure_ptr);
+    delete[] callback_info->atypes;
+    delete callback_info->cif;
+    JS_FreeValue(ctx, callback_info->js_callback);
+    return JS_ThrowInternalError(ctx, "ffi_prep_closure_loc failed");
+  }
+
+  // 保存闭包信息到结构体中
+  callback_info->closure_ptr = closure_ptr;
+  callback_info->func_ptr = func_ptr;
+
+  // 保存回调信息
+  callback_infos.push_back(std::move(callback_info));
+
+  return JS_NewInt64(ctx, (int64_t)(uintptr_t)func_ptr);
+}
+
 static const JSCFunctionListEntry js_ffi_funcs[] = {
   JS_CFUNC_DEF("open", 1, js_ffi_open),
   JS_CFUNC_DEF("symbol", 2, js_ffi_symbol),
@@ -480,6 +682,7 @@ static const JSCFunctionListEntry js_ffi_funcs[] = {
   JS_CFUNC_DEF("free", 1, js_ffi_free),
   JS_CFUNC_DEF("writeArray", 4, js_ffi_writeArray),
   JS_CFUNC_DEF("readArray", 3, js_ffi_readArray),
+  JS_CFUNC_DEF("createCallback", 3, js_ffi_createCallback),
 };
 
 static int js_ffi_init(JSContext* ctx, JSModuleDef* m)
@@ -487,10 +690,20 @@ static int js_ffi_init(JSContext* ctx, JSModuleDef* m)
   return JS_SetModuleExportList(ctx, m, js_ffi_funcs, countof(js_ffi_funcs));
 }
 
+// 模块清理函数
+static void js_ffi_module_finalizer(JSRuntime* rt, JSModuleDef* m)
+{
+  cleanup_callbacks();
+}
+
 JSModuleDef* js_init_module_ffi(JSContext* ctx, const char* module_name)
 {
   JSModuleDef* m = JS_NewCModule(ctx, module_name, js_ffi_init);
   if (!m) return nullptr;
   JS_AddModuleExportList(ctx, m, js_ffi_funcs, countof(js_ffi_funcs));
+
+  // 设置模块清理函数
+  // JS_SetModuleLoaderFunc(JS_GetRuntime(ctx), nullptr, nullptr, nullptr);
+
   return m;
 }

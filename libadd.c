@@ -225,4 +225,68 @@ int find_max_in_array(const int* arr, int size, int* max_index) {
     return max_val;
 }
 
+// 回调函数测试
+typedef int (*SimpleCallback)(int a, int b);
+typedef void (*LogCallback)(const char* message);
+typedef double (*MathCallback)(double x);
+
+__attribute__((visibility("default")))
+int test_simple_callback(int x, int y, SimpleCallback callback) {
+    printf("C [test_simple_callback]: called with x=%d, y=%d\n", x, y);
+    if (callback) {
+        int result = callback(x, y);
+        printf("C [test_simple_callback]: callback returned %d\n", result);
+        return result;
+    }
+    return -1;
+}
+
+__attribute__((visibility("default")))
+void test_log_callback(const char* message, LogCallback callback) {
+    printf("C [test_log_callback]: called with message='%s'\n", message);
+    if (callback) {
+        callback(message);
+    }
+}
+
+__attribute__((visibility("default")))
+double test_math_callback(double input, MathCallback callback) {
+    printf("C [test_math_callback]: called with input=%.2f\n", input);
+    if (callback) {
+        double result = callback(input);
+        printf("C [test_math_callback]: callback returned %.2f\n", result);
+        return result;
+    }
+    return 0.0;
+}
+
+__attribute__((visibility("default")))
+void test_array_foreach(const int* arr, int size, void (*callback)(int value, int index)) {
+    printf("C [test_array_foreach]: iterating %d elements\n", size);
+    for (int i = 0; i < size; i++) {
+        if (callback) {
+            callback(arr[i], i);
+        }
+    }
+}
+
+__attribute__((visibility("default")))
+int test_array_filter(const int* input, int input_size, int* output, 
+                     int (*filter_callback)(int value)) {
+    printf("C [test_array_filter]: filtering %d elements\n", input_size);
+    int output_count = 0;
+
+    for (int i = 0; i < input_size; i++) {
+        if (filter_callback && filter_callback(input[i])) {
+            output[output_count] = input[i];
+            printf("  kept: %d at output[%d]\n", input[i], output_count);
+            output_count++;
+        } else {
+            printf("  filtered out: %d\n", input[i]);
+        }
+    }
+
+    return output_count;
+}
+
 
