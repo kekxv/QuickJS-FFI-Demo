@@ -9,8 +9,6 @@ project(QuickJS_FFI_Demo)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(FFI REQUIRED libffi)
 
-add_definitions("-DCONFIG_VERSION=\\\"20250504\\\"")
-
 # 3. 定义 QuickJS 静态库
 # 从 quickjs 子目录中收集源文件
 set(QUICKJS_SOURCES
@@ -24,6 +22,7 @@ set(QUICKJS_SOURCES
 
 # 添加为静态库
 add_library(quickjs_static STATIC ${QUICKJS_SOURCES})
+target_compile_definitions(quickjs_static PRIVATE "-DCONFIG_VERSION=\"20250504\"")
 
 # 将 quickjs 目录添加到其公共 include 路径中
 # 这样链接到它的目标就能自动找到头文件
