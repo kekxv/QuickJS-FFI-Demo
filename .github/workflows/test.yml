@@ -51,4 +51,14 @@ jobs:
         fi
         # 运行测试
         ./qjs_ffi ../test.js
+    - name: Run tests encapsulated
+      run: |
+        cd build
+        # 设置库路径环境变量以便找到动态库
+        if [ "$RUNNER_OS" == "Linux" ]; then
+          export LD_LIBRARY_PATH=$PWD:$LD_LIBRARY_PATH
+        elif [ "$RUNNER_OS" == "macOS" ]; then
+          export DYLD_LIBRARY_PATH=$PWD:$DYLD_LIBRARY_PATH
+        fi
+        # 运行测试
         ./qjs_ffi ../test-encapsulated.js
