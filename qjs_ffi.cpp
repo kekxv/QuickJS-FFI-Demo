@@ -3,6 +3,7 @@
 #include <iostream>
 #include <memory>
 #include <cstring>
+#include <vector>
 #include <dlfcn.h>
 #include <ffi.h>
 
