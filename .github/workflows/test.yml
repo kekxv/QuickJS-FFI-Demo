@@ -25,12 +25,12 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake build-essential libffi-dev
+        sudo apt-get install -y build-essential libffi-dev
 
     - name: Install dependencies (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        brew install cmake libffi
+        brew install libffi
 
     - name: Configure and build
       run: |
