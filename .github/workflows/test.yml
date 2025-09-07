@@ -34,6 +34,7 @@ jobs:
 
     - name: Configure and build
       run: |
+        rm quickjs/VERSION
         mkdir build
         cd build
         cmake ..
