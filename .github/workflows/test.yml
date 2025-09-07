@@ -1,0 +1,53 @@
+name: Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        # Windows需要特殊处理，暂时不包含
+      fail-fast: false
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        submodules: 'recursive'
+
+    - name: Install dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential libffi-dev
+
+    - name: Install dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install cmake libffi
+
+    - name: Configure and build
+      run: |
+        mkdir build
+        cd build
+        cmake ..
+        make
+
+    - name: Run tests
+      run: |
+        cd build
+        # 设置库路径环境变量以便找到动态库
+        if [ "$RUNNER_OS" == "Linux" ]; then
+          export LD_LIBRARY_PATH=$PWD:$LD_LIBRARY_PATH
+        elif [ "$RUNNER_OS" == "macOS" ]; then
+          export DYLD_LIBRARY_PATH=$PWD:$DYLD_LIBRARY_PATH
+        fi
+        # 运行测试
+        ./qjs_ffi ../test.js
+        ./qjs_ffi ../test-encapsulated.js
