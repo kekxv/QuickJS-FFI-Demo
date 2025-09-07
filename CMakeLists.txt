@@ -22,7 +22,7 @@ set(QUICKJS_SOURCES
 
 # 添加为静态库
 add_library(quickjs_static STATIC ${QUICKJS_SOURCES})
-target_compile_definitions(quickjs_static PRIVATE "-DCONFIG_VERSION=\"2025-04-26\"" -D__FreeBSD__)
+target_compile_definitions(quickjs_static PRIVATE "-DCONFIG_VERSION=\"2025-04-26\"")
 
 # 将 quickjs 目录添加到其公共 include 路径中
 # 这样链接到它的目标就能自动找到头文件
