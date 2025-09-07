@@ -9,7 +9,7 @@ project(QuickJS_FFI_Demo)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(FFI REQUIRED libffi)
 
-add_definitions("-DCONFIG_VERSION=\"20250504\"")
+add_definitions("-DCONFIG_VERSION=\\\"20250504\\\"")
 
 # 3. 定义 QuickJS 静态库
 # 从 quickjs 子目录中收集源文件
